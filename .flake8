@@ -1,0 +1,59 @@
+[flake8]
+max-line-length = 100
+extend-ignore = E203, W503
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    build,
+    dist,
+    .mypy_cache,
+    .pytest_cache,
+    .tox,
+    *.egg-info,
+    node_modules
+
+per-file-ignores =
+    __init__.py:F401
+
+[flake8]
+max-line-length = 100
+max-complexity = 10
+count = True
+statistics = True
+
+ignore =
+    D,
+    E501,
+    E203,
+    W503,
+    W504
+
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    env,
+    .env,
+    build,
+    dist,
+    .eggs,
+    *.egg-info,
+    .mypy_cache,
+    .pytest_cache,
+    .tox,
+    .coverage,
+    htmlcov,
+    node_modules,
+    .vscode,
+    .idea,
+    .DS_Store
+
+per-file-ignores =
+    __init__.py:F401,F403,E402
+    tests/*:E402,F401,F403,F811
+    */migrations/*:E402,F401
+
+known-first-party = scrapers,utils,tests
+known-third-party = playwright,asyncio,json,time,uuid,base64

@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # FoodPanda Scraper Service
+  foodpanda-scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: foodpanda-scraper
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - HEADLESS=true
+      - TIMEOUT=30000
+      - MAX_RETRIES=3
+    volumes:
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - ./screenshots:/app/screenshots
+    command: python -m scrapers.foodpanda.v1_scraper
+    networks:
+      - scraper-network
+    restart: unless-stopped
+    # Uncomment to run periodically (requires schedule setup)
+    # schedule: "0 */6 * * *"  # Every 6 hours
+
+  # Foodi Scraper Service
+  foodi-scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: foodi-scraper
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - HEADLESS=true
+      - TIMEOUT=30000
+      - MAX_RETRIES=3
+    volumes:
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - ./screenshots:/app/screenshots
+    command: python -m scrapers.foodi.v1_scraper
+    networks:
+      - scraper-network
+    restart: unless-stopped
+    depends_on:
+      - foodpanda-scraper
+
+  # Optional: Data processing service (can process scraped data)
+  # data-processor:
+  #   image: python:3.11-slim
+  #   container_name: data-processor
+  #   volumes:
+  #     - ./output:/app/output
+  #     - ./scripts:/app/scripts
+  #   command: python /app/scripts/process_data.py
+  #   networks:
+  #     - scraper-network
+  #   depends_on:
+  #     - foodpanda-scraper
+  #     - foodi-scraper
+
+  # Optional: Database service for storing scraped data
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: scraper-db
+  #   environment:
+  #     - POSTGRES_USER=scraper
+  #     - POSTGRES_PASSWORD=scraper_password
+  #     - POSTGRES_DB=scraper_db
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - scraper-network
+  #   ports:
+  #     - "5432:5432"
+
+networks:
+  scraper-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+
+# Usage:
+# docker-compose up                      # Run all services
+# docker-compose up foodpanda-scraper    # Run specific service
+# docker-compose logs -f                 # View logs
+# docker-compose down                    # Stop all services
+# docker-compose down -v                 # Remove volumes too
