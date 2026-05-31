@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import pandas as pd
 
 from playwright.async_api import (
     Browser,
@@ -69,7 +70,7 @@ class BaseScraper(ABC):
         # Data storage
         self.scraped_data: List[Dict[str, Any]] = []
 
-    async def setup_browser(self, extra_http_headers: dict = None) -> None:
+    async def setup_browser(self, init_scripts: dict = None, extra_http_headers: dict = None) -> None:
         """
         Setup Playwright browser with stealth mode.
 
@@ -89,7 +90,7 @@ class BaseScraper(ABC):
                 args = self.config.browser_args,
             )
             self.logger.info(
-                f"Browser launched (headless={self.config.headless})"
+                f"Browser launched in (headless={self.config.headless}) mode"
             )
 
             # Create browser context with custom settings
@@ -98,7 +99,16 @@ class BaseScraper(ABC):
                 user_agent=self.config.user_agent,
                 locale=self.config.locale,
             )
-            self.logger.info("Browser context created")
+
+            if init_scripts:
+                await self._context.add_init_script(f"""
+                    const storage = {json.dumps(init_scripts)};
+                    for (const [key, value] of Object.entries(storage)) {{
+                        window.localStorage.setItem(key, value);
+                    }}
+                """)
+
+            self.logger.info("Playwright Browser context created")
 
             # Create main page instance
             self._page = await self._context.new_page()
@@ -356,3 +366,84 @@ class BaseScraper(ABC):
         """Async context manager exit."""
         await self.teardown_browser()
         return False
+    
+    def get_locations(self) -> pd.DataFrame:
+        """
+        Read locations from CSV file and return as pandas DataFrame.
+
+        Returns a DataFrame containing (latitude, longitude, area_name)
+        from the locations.csv file with columns: lat, lon, area_name.
+
+        Returns:
+            pd.DataFrame: DataFrame with columns ['lat', 'lon', 'area_name']
+                            and data types:
+                            - lat: float64
+                            - lon: float64
+                            - area_name: object (string)
+
+        Raises:
+            FileNotFoundError: If locations.csv is not found
+            ValueError: If CSV is malformed
+
+        Example:
+            >>> scraper = FoodPandaV1Scraper()
+            >>> locations_df = scraper.get_locations()
+            >>> print(locations_df.head())
+                lat      lon     area_name
+            0  23.8103  90.4125     Gulshan
+            1  23.7974  90.4286      Banani
+            ...
+            >>> # Iterate through locations
+            >>> for idx, row in locations_df.iterrows():
+            ...     scraper.set_location(row['lat'], row['lon'])
+            ...     restaurants = await scraper.run()
+        """
+        # Making a absolute full path for csv path
+        locations_csv_path = Path("data/locations.csv").resolve()
+
+        if not locations_csv_path.exists():
+            self.logger.error(f"Locations CSV not found at: {locations_csv_path}")
+            raise FileNotFoundError(f"Locations CSV not found at: {locations_csv_path}")
+
+        try:
+            # Read CSV directly into DataFrame
+            df = pd.read_csv(
+                locations_csv_path,
+                dtype={
+                    'lat': float,
+                    'lon': float,
+                    'area_name': str
+                }
+            )
+
+            # Remove rows with missing values
+            initial_count = len(df)
+            df = df.dropna()
+            dropped_count = initial_count - len(df)
+
+            if dropped_count > 0:
+                self.logger.warning(f"Dropped {dropped_count} rows with missing values")
+
+            # Strip whitespace from area_name
+            df['area_name'] = df['area_name'].str.strip()
+
+            # Remove empty area names
+            df = df[df['area_name'].str.len() > 0]
+
+            # Reset index
+            df = df.reset_index(drop=True)
+
+            # Log summary
+            self.logger.info(f"Loaded {len(df)} locations from CSV with Columns: {list(df.columns)}, Shape: {df.shape}")
+
+            return df
+
+        except pd.errors.ParserError as e:
+            self.logger.error(f"CSV parsing error: {str(e)}")
+            raise ValueError(f"CSV parsing error: {str(e)}") from e
+        except ValueError as e:
+            self.logger.error(f"Data validation error: {str(e)}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error reading locations CSV: {str(e)}")
+            raise
