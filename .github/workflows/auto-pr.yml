@@ -1,0 +1,54 @@
+name: Auto Create/Update PR on Push
+
+on:
+  push:
+    branches:
+      - '**'
+      - '!main' #except main
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+
+jobs:
+  auto-pr:
+    # Don't run on main
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if PR exists and create/update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          BASE="main"
+          COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
+          PR_TITLE="${COMMIT_MESSAGE%%$'\n'*}"
+          
+          # Find existing PR
+          PR_NUMBER=$(gh pr list \
+            --head "$BRANCH" \
+            --base "$BASE" \
+            --state open \
+            --json number \
+            -q '.[0].number')
+          
+          if [ "$PR_NUMBER" = "null" ] || [ -z "$PR_NUMBER" ]; then
+            # Create new PR
+            echo "Creating PR for branch: $BRANCH with title: $PR_TITLE"
+            gh pr create \
+              --head "$BRANCH" \
+              --base "$BASE" \
+              --title "Automated PR: $PR_TITLE" \
+              --body "$(cat .github/pull_request_template.md)" \
+              --label "automated,needs-review" \
+              --draft=false
+          else
+            echo "PR #$PR_NUMBER already exists - commits will auto-update it"
+          fi
