@@ -98,6 +98,11 @@ scrape-foodpanda:
 	$(PYTHON) -m scrapers.foodpanda.v1Scraper
 	@echo "✓ Done"
 
+scrape-foodi:
+	@echo "Running Foodi v1 scraper..."
+	$(PYTHON) -m scrapers.foodi.v1Scraper
+	@echo "✓ Done"
+
 # ============================================================================
 # Docker Targets
 # ============================================================================

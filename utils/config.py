@@ -6,6 +6,7 @@ and support for environment variable overrides.
 """
 
 import os
+import json
 from typing import List, Optional
 
 
@@ -50,14 +51,14 @@ class ScraperConfig:
             )
 
     locale: str = "en_BD"
-    timezone: str = "America/New_York"
+    timezone: str = "Asia/Dhaka"
     permissions: List[str] = ["geolocation"]
     extra_http_headers: List[dict] = {
         "Accept-Language": "en-GB,en;q=0.9"
     }
 
     # Logging settings
-    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    log_level: str = os.getenv("LOG_LEVEL", "DEBUG")
     log_file: str = os.getenv("LOG_FILE", "logs/scraper.log")
 
     # Data export settings
@@ -96,9 +97,54 @@ class FoodiConfig(ScraperConfig):
     """Foodi specific configuration."""
     base_url: str = "https://www.foodi.com"
     request_delay: float = 1.5
-
-
-class SwiggyStrapiConfig(ScraperConfig):
-    """Swiggy specific configuration."""
-    base_url: str = "https://www.swiggy.com"
-    request_delay: float = 2.0
+    storage_data = {
+        "foodi:devId": "0182c45e35ead912d3e3f05f-Brave, Chrome, Chromium, Not:A-Brand",
+        # "formatted_address": "Road No. 5 & Sahid Zia College Road, Dhaka, Bangladesh",
+        # "latitude": "23.823402040410024",
+        # "longitude": "90.37264433488772",
+        "navItems": json.dumps({
+            "delivery": True,
+            "pickup": False,
+            "flower": False
+        }),
+        # "vertical": json.dumps({
+        #     "id": 7,
+        #     "name": "Food",
+        #     "offerText": None,
+        #     "offerBgColor": None,
+        #     "offerTextColor": None,
+        #     "pageType": 1,
+        #     "platformType": 1,
+        #     "verticalType": 2,
+        #     "defaultServiceType": 1,
+        #     "verticalForRedisServiceType": [
+        #         {
+        #             "level": "Delivery",
+        #             "value": "isDelivery",
+        #             "isActive": True,
+        #             "isDefault": True
+        #         },
+        #         {
+        #             "level": "Pickup",
+        #             "value": "isPickup",
+        #             "isActive": True,
+        #             "isDefault": False
+        #         }
+        #     ],
+        #     "sortOrder": 1,
+        #     "sloganText": None,
+        #     "sloganTextColor": None,
+        #     "cardTextColor": None,
+        #     "cardBgColor": None,
+        #     "isDelivery": True,
+        #     "isPickup": True,
+        #     "isDine": False,
+        #     "isFlower": False,
+        #     "verticalTags": [1],
+        #     "hints": [],
+        #     "image": None,
+        #     "isShowSingleBranchDetails": False,
+        #     "slug": None
+        # }),
+        # "zoneId": "4"
+    }

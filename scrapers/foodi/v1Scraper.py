@@ -1,19 +1,13 @@
-# scrapers/foodpanda/v1Scrapper.py
+# scrapers/foodi/v1Scrapper.py
 
 """
-FoodPanda v1 Scraper with API Headers
+Foodi v1 Scraper
 
-Version 1: Basic implementation for scraping restaurants from FoodPanda.
+Version 1: Basic implementation for scraping restaurants from Foodi.
 
 This version includes:
 - Restaurant listing extraction
-- Header interception and management
 
-Key Headers:
-- x-fp-api-key: "volo" (FoodPanda API key)
-- apollographql-client-name: "web" (Client identifier)
-- locale: "en_BD" (Language/region)
-- customer-latitude/longitude: (Location-based results)
 """
 
 import asyncio
@@ -30,14 +24,14 @@ from tqdm import tqdm
 import pandas as pd
 from playwright.async_api import Page, Locator
 from scrapers.baseScraper import BaseScraper
-from utils.config import FoodPandaConfig
+from utils.config import FoodiConfig
 from utils.logger import get_logger
 from utils.validators import clean_price, clean_rating, clean_text
 
 
-class FoodPandaV1Scraper(BaseScraper):
+class FoodiV1Scraper(BaseScraper):
     """
-    FoodPanda v1 Scraper - With proper API headers.
+    Foodi v1 Scraper - With proper API headers.
 
     This scraper handles:
     - Location-based restaurant filtering
@@ -45,7 +39,7 @@ class FoodPandaV1Scraper(BaseScraper):
     Example usage:
     ```python
     async def main():
-        scraper = FoodPandaV1Scraper()
+        scraper = FoodiV1Scraper()
         scraper.set_location(latitude=23.8103, longitude=90.4125)
         data = await scraper.run()
         print(f"Scraped {len(data)} restaurants")
@@ -55,20 +49,16 @@ class FoodPandaV1Scraper(BaseScraper):
     """
 
     def __init__(self):
-        """Initialize FoodPanda v1 scraper."""
+        """Initialize Foodi v1 scraper."""
         super().__init__(
-            website_name="foodpanda",
+            website_name="foodi",
             version="v1"
         )
         
-        # Session management
-        self.session_id = None
-        self.perseus_id = None
-        self.dps_session_id = None
-        
         # Headers cache
         self._context_headers = None
-        self._logger = get_logger(f"{self.website_name}_{self.version}_headers")
+        self._logger = get_logger(f"{self.website_name}_{self.version}")
+        self.foodi_init_scripts = FoodiConfig().storage_data
 
     async def setup_scraper(self) -> None:
         """
@@ -81,7 +71,7 @@ class FoodPandaV1Scraper(BaseScraper):
         """
 
         # pass website wise context level extra http headers
-        await self.setup_browser()
+        await self.setup_browser(init_scripts = self.foodi_init_scripts)
 
     def _get_context_headers(self) -> Dict[str, str]:
         """
@@ -141,21 +131,25 @@ class FoodPandaV1Scraper(BaseScraper):
 
         while retry_count < max_retries:
             # Get current restaurant count
-            restaurants = self._page.locator("//ul[@data-testid='vendor-list-revamped-section']/li")
+            all_restaurants_section = self._page.locator("//h5[text()='All Restaurants']/parent::div") #used xpath axes
+            await all_restaurants_section.scroll_into_view_if_needed(timeout=10000)
+            restaurants = all_restaurants_section.locator("div.restaurant-item-card")
+            await self._page.pause()
             current_count = await restaurants.count()
+            print("current count", current_count)
             
             self.logger.info(f"Scroll attempt {retry_count + 1}: Found {current_count} restaurants")
             
             # Check if count increased
             if current_count == previous_count:
-                self.logger.info(f"All restaurants loaded! Total: {current_count}")
+                self.logger.info(f"All restaurants loaded! Total: {current_count} restaurants")
                 return restaurants
             
             # Count increased, continue scrolling
             previous_count = current_count
             
             # SCROLL TO BOTTOM
-            await self._page.locator("strong:has-text('Fast food delivery in')").scroll_into_view_if_needed(timeout=30000)
+            await self._page.get_by_role('heading', name='Order food from the best restaurants and shops with Foodi Bangladesh', exact=False ).scroll_into_view_if_needed(timeout=10000)
 
             # Wait for new items to load
             try:
@@ -175,12 +169,16 @@ class FoodPandaV1Scraper(BaseScraper):
 
     async def scrape(self):
         """
-        Main scraping logic for FoodPanda.
+        Main scraping logic for Foodi.
 
         Returns:
             List of restaurant data dictionaries
         """
         try:
+            self.logger.info("Navigating to Foodi website")
+            await self._page.goto("https://foodibd.com/restaurants?type=delivery")
+            await self._page.wait_for_load_state(state='domcontentloaded', timeout=10000)
+            time.sleep(5)
 
             locationDF = self.get_locations()
 
@@ -191,17 +189,22 @@ class FoodPandaV1Scraper(BaseScraper):
                 lon = row.lon
                 area_name = row.area_name
                 
-                self.logger.info(f"Scraping location {index}: {area_name} (lat={lat}, lon={lon})")
+                self.logger.debug(f"Scraping location {index}: {area_name} (lat={lat}, lon={lon})")
+                self.logger.debug(f"Setting latitute: {lat}, longitude: {lon}, formatted_address: {area_name} in localStorage")
+                await self._page.evaluate(
+                    """([lat, lon, area_name]) => {
+                        localStorage.setItem("latitude", lat);
+                        localStorage.setItem("longitude", lon);
+                        localStorage.setItem("formatted_address", area_name)
+                    }""",
+                    [str(lat), str(lon), str(area_name)]
+                )
+                await self._page.goto("https://foodibd.com/restaurants?type=delivery")
+                self.logger.info("Page reloaded after set in localstorage")
 
                 if index > 1:
-                    # await self._page.wait_for_timeout(15000)
                     self.logger.info("Waiting 15 secs between location switch")
                     time.sleep(15)
-
-                await self._page.goto(f"https://www.foodpanda.com.bd/?lat={lat}&lng={lon}")
-                await self._page.wait_for_load_state(state='domcontentloaded', timeout=10000)
-                # await self._page.wait_for_timeout(timeout=3000)
-                time.sleep(5)
 
                 try:
                     captcha = await self._page.locator(
@@ -211,7 +214,6 @@ class FoodPandaV1Scraper(BaseScraper):
                         self.logger.info("-----------Captcha found--------------")
                         await self._page.pause()
                         self.logger.info("-----------Resuming scraping after resolving captcha--------------")
-                        # await self._page.wait_for_timeout(60000)  # Wait for solve
                         time.sleep(30)
                 except Exception as e:
                     self.logger.warning(f"-----------Captcha not found / Error Resolving Capcha/ Locator Error; trace: {e}--------------")
@@ -222,6 +224,7 @@ class FoodPandaV1Scraper(BaseScraper):
                 restaurant_count = await restaurants_locator.count()
                 
                 self.logger.info(f"Found {restaurant_count} restaurants in {area_name}")
+                await self._page.pause()
 
                 for idx in tqdm(range(restaurant_count)):  #tqdm for visual progress bar
                     try:
@@ -273,18 +276,18 @@ class FoodPandaV1Scraper(BaseScraper):
 
             scrapeMetaDF = pd.DataFrame(scrape_meta)
             self.logger.info(f"Dataframe prepared for scraped data with {len(scrapeMetaDF)} restaurants")
-            scrapeMetaDF.to_csv("FoodpandaData.csv", index=False)
-            self.logger.info(f"Data saved to FoodpandaData.csv")
+            scrapeMetaDF.to_csv("FoodiData.csv", index=False)
+            self.logger.info(f"Data saved to FoodiData.csv")
 
         except Exception as e:
             self.logger.error(f"Error during scraping: {str(e)}")
-            await self.take_screenshot("error_foodpanda_v1.png")
+            await self.take_screenshot("error_foodi_v1.png")
             raise
 
 
 async def main():
     """Example usage of FoodPanda v1 scraper with headers."""
-    scraper = FoodPandaV1Scraper()
+    scraper = FoodiV1Scraper()
     
     try:
         await scraper.setup_scraper()
